@@ -4,13 +4,23 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:gateway": "ts-node gateway/src/index.ts",
+    "dev:auth": "ts-node services/auth/src/index.ts",
+    "dev:user": "ts-node services/user/src/index.ts",
+    "dev:order": "ts-node services/order/src/index.ts",
+    "dev:notification": "ts-node services/notification/src/index.ts",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up --build",
+    "db:schema": "psql -h localhost -U orbit -d orbit -f scripts/schema.sql",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@nakshatrathange/rediswall": "^0.1.1",
     "@opentelemetry/auto-instrumentations-node": "^0.77.0",
     "@opentelemetry/exporter-jaeger": "^2.8.0",
     "@opentelemetry/resources": "^2.8.0",

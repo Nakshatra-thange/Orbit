@@ -1,0 +1,126 @@
+version: '3.9'
+
+services:
+
+  # ── nginx ──────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - gateway
+    networks:
+      - orbit-net
+
+  # ── Gateway ────────────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - GATEWAY_PORT=3000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=orbit
+      - POSTGRES_PASSWORD=orbit_secret
+      - POSTGRES_DB=orbit
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=orbit_jwt_secret_change_in_production
+      - NODE_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - orbit-net
+
+  # ── Microservices ──────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=orbit
+      - POSTGRES_PASSWORD=orbit_secret
+      - POSTGRES_DB=orbit
+    networks:
+      - orbit-net
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user/Dockerfile
+    networks:
+      - orbit-net
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order/Dockerfile
+    networks:
+      - orbit-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    networks:
+      - orbit-net
+
+  # ── Postgres ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     orbit
+      POSTGRES_PASSWORD: orbit_secret
+      POSTGRES_DB:       orbit
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - orbit-net
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - orbit-net
+
+  # ── Jaeger (OpenTelemetry traces) ──────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "14268:14268"   # HTTP collector
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - orbit-net
+
+volumes:
+  postgres_data:
+
+networks:
+  orbit-net:
+    driver: bridge
