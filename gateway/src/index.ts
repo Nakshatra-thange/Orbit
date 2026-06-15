@@ -4,9 +4,14 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
+
 import { db, dbHealthCheck } from './utils/db';
 import { redis, redisHealthCheck } from './utils/redis';
 import { registry } from './services/registry';
+import { authMiddleware } from './middleware/auth';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { proxyMiddleware } from './middleware/proxy';
+import orbitRoutes from './routes/orbit';
 
 dotenv.config();
 
@@ -18,65 +23,60 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Stamp every request with a correlation ID immediately
+// Stamp correlation ID immediately — before anything else runs
 app.use((req, _res, next) => {
-  req.headers['x-correlation-id'] = req.headers['x-correlation-id'] ?? uuidv4();
+  req.headers['x-correlation-id'] =
+    req.headers['x-correlation-id'] ?? uuidv4();
   next();
 });
 
-// Structured request logging — includes correlation ID
-app.use(morgan((tokens, req, res) => {
-  return JSON.stringify({
+// Structured logging
+app.use(morgan((tokens, req, res) =>
+  JSON.stringify({
     method:        tokens.method(req, res),
     url:           tokens.url(req, res),
     status:        tokens.status(req, res),
     responseTime:  tokens['response-time'](req, res) + 'ms',
     correlationId: req.headers['x-correlation-id'],
+    userId:        req.headers['x-user-id'],
+    tier:          req.headers['x-user-tier'],
     timestamp:     new Date().toISOString(),
-  });
-}));
+  })
+));
 
-// ── Health endpoint (not rate limited, not proxied) ───────────────────────────
+// ── Health (public, no auth, no rate limit) ───────────────────────────────────
 app.get('/health', async (_req, res) => {
   const [dbOk, redisOk] = await Promise.all([
     dbHealthCheck(),
     redisHealthCheck(),
   ]);
-
-  const status = dbOk && redisOk ? 'healthy' : 'degraded';
-
   res.status(dbOk && redisOk ? 200 : 503).json({
-    status,
-    services: { db: dbOk ? 'ok' : 'down', redis: redisOk ? 'ok' : 'down' },
-    registry: registry.getAll().length,
-    uptime:   process.uptime(),
+    status:    dbOk && redisOk ? 'healthy' : 'degraded',
+    services:  { db: dbOk ? 'ok' : 'down', redis: redisOk ? 'ok' : 'down' },
+    registry:  registry.getAll().length,
+    uptime:    process.uptime(),
     timestamp: new Date().toISOString(),
   });
 });
 
-// ── Orbit internal API (dashboard reads from here) ───────────────────────────
-app.get('/orbit/services', (_req, res) => {
-  const services = registry.getAll().map(e => ({
-    id:            e.service.id,
-    name:          e.service.name,
-    slug:          e.service.slug,
-    revenueImpact: e.service.revenueImpact,
-    upstreamUrl:   e.service.upstreamUrl,
-    policy:        e.policy,
-  }));
-  res.json({ success: true, data: services });
-});
+// ── Orbit internal API (dashboard) ───────────────────────────────────────────
+app.use('/orbit', orbitRoutes);
 
-// ── 404 catch-all ─────────────────────────────────────────────────────────────
+// ── Gateway pipeline for all other routes ────────────────────────────────────
+// Order matters: auth → rate limit → proxy
+app.use(authMiddleware);
+app.use(rateLimitMiddleware as express.RequestHandler);
+app.use(proxyMiddleware);
+
+// ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 async function start(): Promise<void> {
-  console.log('\n[orbit] Starting gateway...');
+  console.log('\n[orbit] Starting Orbit gateway...\n');
 
-  // Wait for Postgres
   let dbReady = false;
   for (let i = 0; i < 10; i++) {
     dbReady = await dbHealthCheck();
@@ -85,18 +85,24 @@ async function start(): Promise<void> {
     await new Promise(r => setTimeout(r, 2000));
   }
   if (!dbReady) {
-    console.error('[orbit] Postgres not available after 10 retries. Exiting.');
+    console.error('[orbit] Postgres not available. Exiting.');
     process.exit(1);
   }
 
-  // Load service registry from DB
   await registry.load();
   registry.startAutoRefresh(30_000);
 
   app.listen(PORT, () => {
-    console.log(`[orbit] Gateway running on port ${PORT}`);
-    console.log(`[orbit] Health  → http://localhost:${PORT}/health`);
-    console.log(`[orbit] Services → http://localhost:${PORT}/orbit/services\n`);
+    console.log(`[orbit] Gateway          → http://localhost:${PORT}`);
+    console.log(`[orbit] Health           → http://localhost:${PORT}/health`);
+    console.log(`[orbit] Services         → http://localhost:${PORT}/orbit/services`);
+    console.log(`[orbit] Failed requests  → http://localhost:${PORT}/orbit/failed-requests`);
+    console.log(`[orbit] Metrics (sample) → http://localhost:${PORT}/orbit/metrics/<serviceId>`);
+    console.log('\n[orbit] Registered services:');
+    registry.getAll().forEach(e =>
+      console.log(`  /${e.service.slug}/* → ${e.service.upstreamUrl} [${e.service.revenueImpact}]`)
+    );
+    console.log('');
   });
 }
 
