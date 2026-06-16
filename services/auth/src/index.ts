@@ -69,7 +69,7 @@ app.post('/register', async (req, res) => {
         tenantId: 'a0000000-0000-0000-0000-000000000001',
       },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: JWT_EXPIRES_IN as any }
     );
 
     res.status(201).json({
@@ -118,7 +118,7 @@ app.post('/login', async (req, res) => {
         tenantId: 'a0000000-0000-0000-0000-000000000001',
       },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: JWT_EXPIRES_IN as any }
     );
 
     res.json({
