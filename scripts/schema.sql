@@ -150,3 +150,32 @@ VALUES
   ('b0000000-0000-0000-0000-000000000003', 0.20, 1500, 15000, 3),  -- stricter: high revenue impact
   ('b0000000-0000-0000-0000-000000000004', 0.40, 3000, 30000, 5)
 ON CONFLICT DO NOTHING;
+
+-- ─── Orders ───────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS orders (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL,
+  tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  items        JSONB NOT NULL DEFAULT '[]',
+  total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+  status       VARCHAR(50) NOT NULL DEFAULT 'pending',
+  -- pending | confirmed | processing | shipped | delivered | cancelled
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_id
+  ON orders(user_id, created_at DESC);
+
+-- ─── Notifications ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL,
+  tenant_id    UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  type         VARCHAR(50) NOT NULL,   -- order_created | order_shipped | etc
+  title        VARCHAR(255) NOT NULL,
+  message      TEXT NOT NULL,
+  metadata     JSONB,
+  read         BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
