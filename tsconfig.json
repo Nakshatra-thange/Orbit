@@ -3,8 +3,10 @@
       "target": "ES2020",
       "module": "commonjs",
       "lib": ["ES2020"],
+      "types": ["node"],
       "outDir": "./dist",
       "rootDir": "./",
+      "ignoreDeprecations": "6.0",
       "strict": true,
       "esModuleInterop": true,
       "skipLibCheck": true,
@@ -17,6 +19,6 @@
         "@shared/*": ["shared/*"]
       }
     },
-    "include": ["gateway/src/**/*", "services/**/*.ts", "shared/**/*"],
+    "include": ["gateway/src/**/*", "services/**/*.ts", "shared/**/*","scripts/**/*.ts"],
     "exclude": ["node_modules", "dist", "dashboard"]
   }

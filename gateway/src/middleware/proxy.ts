@@ -78,7 +78,7 @@ export function proxyMiddleware(
     on: {
       proxyReq: fixRequestBody,
   
-      proxyRes: (proxyRes, _req, _res) => {
+      proxyRes: (proxyRes) => {
         const responseTimeMs = Date.now() - startedAt;
         const statusCode = proxyRes.statusCode ?? 0;
   
@@ -112,7 +112,7 @@ export function proxyMiddleware(
         }
       },
   
-      error: (err, _req, res) => {
+      error: (err, _req, _proxyRes) => {
         const responseTimeMs = Date.now() - startedAt;
   
         console.error(
@@ -147,8 +147,8 @@ export function proxyMiddleware(
           correlationId,
         });
   
-        if (!('headersSent' in res && res.headersSent)) {
-          (res as Response).status(502).json({
+        if (!res.headersSent) {
+          res.status(502).json({
             success: false,
             error: 'Service unavailable',
             service: service.name,
@@ -157,4 +157,8 @@ export function proxyMiddleware(
         }
       },
     },
-  }}
+  };
+  
+  // THIS LINE IS CRITICAL
+  createProxyMiddleware(proxyOptions)(req, res, next);
+  }
