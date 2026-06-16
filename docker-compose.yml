@@ -64,6 +64,13 @@ services:
     build:
       context: .
       dockerfile: services/order/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=orbit
+      - POSTGRES_PASSWORD=orbit_secret
+      - POSTGRES_DB=orbit
     networks:
       - orbit-net
 
@@ -71,6 +78,9 @@ services:
     build:
       context: .
       dockerfile: services/notification/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     networks:
       - orbit-net
 

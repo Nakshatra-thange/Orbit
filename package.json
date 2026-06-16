@@ -13,7 +13,10 @@
     "docker:down": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up --build",
     "db:schema": "psql -h localhost -U orbit -d orbit -f scripts/schema.sql",
-    "test": "jest"
+    "test": "jest",
+    "traffic:normal":  "ts-node scripts/generateTraffic.ts normal",
+"traffic:degrade": "ts-node scripts/generateTraffic.ts degrade",
+"traffic:fail":    "ts-node scripts/generateTraffic.ts fail"
   },
   "keywords": [],
   "author": "",

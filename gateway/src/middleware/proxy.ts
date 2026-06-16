@@ -1,9 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { createProxyMiddleware, Options } from 'http-proxy-middleware';
+
 import { registry } from '../services/registry';
 import { writeMetric, writeFailedRequest } from '../utils/metrics';
 import { sanitiseHeaders, redactBody } from '../utils/sanitise';
-
+import {
+  createProxyMiddleware,
+  fixRequestBody,
+  Options,
+} from 'http-proxy-middleware';
 /*
  * Proxy middleware — the core of the gateway
  * ───────────────────────────────────────────
@@ -59,95 +63,98 @@ export function proxyMiddleware(
   req.headers['x-service-name'] = service.name;
 
   const proxyOptions: Options = {
-    target:      service.upstreamUrl,
+    target: service.upstreamUrl,
     changeOrigin: true,
-
-    // Strip the slug prefix before forwarding
-    // /order/123 becomes /123 at the upstream
-    pathRewrite: { [`^/${slug}`]: '' },
-
-    // Forward the correlation ID to the upstream service
+  
+    pathRewrite: {
+      [`^/${slug}`]: '',
+    },
+  
     headers: {
       'x-correlation-id': correlationId,
-      'x-forwarded-by':   'orbit-gateway',
+      'x-forwarded-by': 'orbit-gateway',
     },
-
+  
     on: {
+      proxyReq: fixRequestBody,
+  
       proxyRes: (proxyRes, _req, _res) => {
         const responseTimeMs = Date.now() - startedAt;
-        const statusCode     = proxyRes.statusCode ?? 0;
-
-        // Write metric asynchronously — never blocks the response
-        writeMetric({
-          serviceId:      service.id,
-          tenantId,
-          responseTimeMs,
-          statusCode,
-          method:         req.method,
-          path:           req.path,
-          correlationId,
-          isFallback:     false,
-        });
-
-        // Store failed requests for safe replay
-        if (statusCode >= 500) {
-          writeFailedRequest({
-            serviceId:        service.id,
-            tenantId,
-            method:           req.method,
-            path:             req.path,
-            sanitisedHeaders: sanitiseHeaders(req.headers as Record<string, string>),
-            redactedBody:     req.body
-              ? redactBody(req.body, policy.sensitiveFields)
-              : null,
-            responseStatus:   statusCode,
-            errorReason:      '5xx',
-            correlationId,
-          });
-        }
-      },
-
-      error: (err, _req, res) => {
-        const responseTimeMs = Date.now() - startedAt;
-        console.error(`[orbit:proxy] ${service.name} unreachable:`, err.message);
-
+        const statusCode = proxyRes.statusCode ?? 0;
+  
         writeMetric({
           serviceId: service.id,
           tenantId,
           responseTimeMs,
-          statusCode:   502,
-          method:       req.method,
-          path:         req.path,
+          statusCode,
+          method: req.method,
+          path: req.path,
           correlationId,
-          isFallback:   false,
+          isFallback: false,
         });
-
-        writeFailedRequest({
-          serviceId:        service.id,
+  
+        if (statusCode >= 500) {
+          writeFailedRequest({
+            serviceId: service.id,
+            tenantId,
+            method: req.method,
+            path: req.path,
+            sanitisedHeaders: sanitiseHeaders(
+              req.headers as Record<string, string>
+            ),
+            redactedBody: req.body
+              ? redactBody(req.body, policy.sensitiveFields)
+              : null,
+            responseStatus: statusCode,
+            errorReason: '5xx',
+            correlationId,
+          });
+        }
+      },
+  
+      error: (err, _req, res) => {
+        const responseTimeMs = Date.now() - startedAt;
+  
+        console.error(
+          `[orbit:proxy] ${service.name} unreachable:`,
+          err.message
+        );
+  
+        writeMetric({
+          serviceId: service.id,
           tenantId,
-          method:           req.method,
-          path:             req.path,
-          sanitisedHeaders: sanitiseHeaders(req.headers as Record<string, string>),
-          redactedBody:     req.body
+          responseTimeMs,
+          statusCode: 502,
+          method: req.method,
+          path: req.path,
+          correlationId,
+          isFallback: false,
+        });
+  
+        writeFailedRequest({
+          serviceId: service.id,
+          tenantId,
+          method: req.method,
+          path: req.path,
+          sanitisedHeaders: sanitiseHeaders(
+            req.headers as Record<string, string>
+          ),
+          redactedBody: req.body
             ? redactBody(req.body, policy.sensitiveFields)
             : null,
-          responseStatus:   502,
-          errorReason:      'connection_refused',
+          responseStatus: 502,
+          errorReason: 'connection_refused',
           correlationId,
         });
-
-        // res here is the http.ServerResponse, not Express Response
+  
         if (!('headersSent' in res && res.headersSent)) {
           (res as Response).status(502).json({
             success: false,
-            error:   'Service unavailable',
+            error: 'Service unavailable',
             service: service.name,
             correlationId,
           });
         }
       },
     },
-  };
-
-  createProxyMiddleware(proxyOptions)(req, res, next);
-}
+  }}

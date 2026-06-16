@@ -29,8 +29,8 @@ export function createRedisConnection():any {
 }
 
 export const QUEUES = {
-  NOTIFICATIONS: 'orbit:notifications',
-  ORDER_EVENTS:  'orbit:order-events',
+  NOTIFICATIONS: 'orbit-notifications',
+  ORDER_EVENTS:  'orbit-order-events',
 } as const;
 
 export interface NotificationJob {
