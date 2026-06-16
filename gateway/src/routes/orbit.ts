@@ -2,7 +2,10 @@ import { Router, Request, Response } from 'express';
 import { db } from '../utils/db';
 import { registry } from '../services/registry';
 import { redis } from '../utils/redis';
-
+import { getIncidentTimeline } from '../reliability/incidents';
+import { getAllCircuitStates }  from '../reliability/circuitBreaker';
+import { getServiceHealth }    from '../reliability/healthScorer';
+import { getActiveHealth }     from '../reliability/healthChecker';
 /*
  * Orbit internal API — consumed by the dashboard
  * ────────────────────────────────────────────────
@@ -224,6 +227,100 @@ router.put('/policies/:serviceId', async (req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Policy update failed' });
+  }
+});
+
+
+// ── Circuit breaker states (all services) ─────────────────────────────────────
+router.get('/circuits', async (_req: Request, res: Response) => {
+  try {
+    const states = await getAllCircuitStates();
+    res.json({ success: true, data: states });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Circuit state query failed' });
+  }
+});
+
+// ── Full dashboard status (one call, all data) ────────────────────────────────
+router.get('/dashboard', async (_req: Request, res: Response) => {
+  try {
+    const entries = registry.getAll();
+
+    const serviceStatuses = await Promise.all(
+      entries.map(async ({ service, policy }) => {
+        const [passiveHealth, activeHealth, circuitState] = await Promise.all([
+          getServiceHealth(service.id),
+          getActiveHealth(service.id),
+          import('../reliability/circuitBreaker').then(m =>
+            m.getCircuitState(service.id)
+          ),
+        ]);
+
+        // Determine overall status
+        let status: 'healthy' | 'degraded' | 'down' = 'healthy';
+        if (circuitState?.state === 'OPEN')       status = 'down';
+        else if (circuitState?.state === 'HALF_OPEN') status = 'degraded';
+        else if (passiveHealth && (
+          passiveHealth.errorRate   > policy.errorRateThreshold * 0.7 ||
+          passiveHealth.p95LatencyMs > policy.latencyThresholdMs * 0.7
+        )) status = 'degraded';
+
+        return {
+          service: {
+            id:            service.id,
+            name:          service.name,
+            slug:          service.slug,
+            revenueImpact: service.revenueImpact,
+          },
+          status,
+          passiveHealth,
+          activeHealth,
+          circuit:  circuitState ?? { state: 'CLOSED', failureCount: 0 },
+          policy: {
+            errorRateThreshold: policy.errorRateThreshold,
+            latencyThresholdMs: policy.latencyThresholdMs,
+            halfOpenRetryMs:    policy.halfOpenRetryMs,
+          },
+        };
+      })
+    );
+
+    res.json({ success: true, data: serviceStatuses, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Dashboard query failed' });
+  }
+});
+
+// ── Incident timeline per service ─────────────────────────────────────────────
+router.get('/incidents/:serviceId', async (req: Request, res: Response) => {
+  try {
+    const timeline = await getIncidentTimeline(req.params.serviceId as string);
+    res.json({ success: true, data: timeline });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Incident query failed' });
+  }
+});
+
+// ── All incidents across all services ─────────────────────────────────────────
+router.get('/incidents', async (_req: Request, res: Response) => {
+  try {
+    const result = await db.query(
+      `SELECT
+         i.*,
+         s.name          AS service_name,
+         s.revenue_impact,
+         s.slug,
+         COUNT(ie.id)    AS event_count
+       FROM incidents i
+       JOIN services s     ON s.id = i.service_id
+       LEFT JOIN incident_events ie ON ie.incident_id = i.id
+       GROUP BY i.id, s.name, s.revenue_impact, s.slug
+       ORDER BY i.started_at DESC
+       LIMIT 50`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Incidents query failed' });
   }
 });
 

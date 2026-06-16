@@ -96,6 +96,10 @@ async function start(): Promise<void> {
   await registry.load();
   registry.startAutoRefresh(30_000);
 
+  // Start the reliability loop
+startReliabilityScheduler();
+console.log('[orbit] Reliability scheduler started (10s interval)');
+
   app.listen(PORT, () => {
     console.log(`[orbit] Gateway          → http://localhost:${PORT}`);
     console.log(`[orbit] Health           → http://localhost:${PORT}/health`);
