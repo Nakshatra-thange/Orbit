@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-
+import { startReliabilityScheduler } from './reliability/scheduler';
+import { circuitGuard }              from './middleware/circuitGuard';
 import { db, dbHealthCheck } from './utils/db';
 import { redis, redisHealthCheck } from './utils/redis';
 import { registry } from './services/registry';
@@ -64,8 +65,11 @@ app.use('/orbit', orbitRoutes);
 
 // ── Gateway pipeline for all other routes ────────────────────────────────────
 // Order matters: auth → rate limit → proxy
+// ── Gateway pipeline ──────────────────────────────────────────────────────────
+// Order: auth → rate limit → circuit guard → proxy
 app.use(authMiddleware);
 app.use(rateLimitMiddleware as express.RequestHandler);
+app.use(circuitGuard);
 app.use(proxyMiddleware);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
