@@ -273,7 +273,11 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
             revenueImpact: service.revenueImpact,
           },
           status,
-          passiveHealth,
+          passiveHealth: passiveHealth ? {
+            ...passiveHealth,
+            p95LatencyMs: Math.round(passiveHealth.p95LatencyMs),
+            errorRate:    Number(passiveHealth.errorRate.toFixed(4)),
+          } : null,
           activeHealth,
           circuit:  circuitState ?? { state: 'CLOSED', failureCount: 0 },
           policy: {
