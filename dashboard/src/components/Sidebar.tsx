@@ -2,10 +2,7 @@ import { LayoutGrid, Activity, AlertTriangle, History, SlidersHorizontal, LogOut
 
 const navItems = [
   { icon: LayoutGrid,          label: 'Dashboard',  active: true },
-  { icon: Activity,            label: 'Services' },
-  { icon: AlertTriangle,       label: 'Incidents' },
-  { icon: History,             label: 'Replay log' },
-  { icon: SlidersHorizontal,   label: 'Policies' },
+
 ];
 
 export function Sidebar() {
