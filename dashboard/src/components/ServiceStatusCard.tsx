@@ -14,7 +14,7 @@ const IMPACT_LABEL: Record<string, string> = {
 export function ServiceStatusCard({ card }: { card: ServiceCard }) {
   const style    = STATUS_STYLES[card.status];
   const errorPct = card.passiveHealth ? Math.round(card.passiveHealth.errorRate * 100) : 0;
-  const latency  = card.passiveHealth?.p95LatencyMs ?? 0;
+  const latency  = Math.round(card.passiveHealth?.p95LatencyMs ?? 0);
   const isOpen   = card.circuit.state === 'OPEN';
 
   return (
