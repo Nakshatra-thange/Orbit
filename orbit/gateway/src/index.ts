@@ -14,7 +14,9 @@ import { registry } from './services/registry';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { proxyMiddleware } from './middleware/proxy';
+import { sanitiseHeaders } from './utils/sanitise';
 import orbitRoutes from './routes/orbit';
+import type { OrbitRequest } from './types';
 
 dotenv.config();
 
@@ -26,10 +28,11 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Stamp correlation ID immediately — before anything else runs
+// Stamp correlation ID and snapshot headers before auth mutates them
 app.use((req, _res, next) => {
   req.headers['x-correlation-id'] =
     req.headers['x-correlation-id'] ?? uuidv4();
+  (req as OrbitRequest).orbitSanitisedHeaders = sanitiseHeaders(req.headers);
   next();
 });
 

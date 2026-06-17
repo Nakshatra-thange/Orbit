@@ -57,6 +57,11 @@ services:
     build:
       context: .
       dockerfile: services/user/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=orbit
+      - POSTGRES_PASSWORD=orbit_secret
+      - POSTGRES_DB=orbit
     networks:
       - orbit-net
 

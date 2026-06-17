@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { registry } from '../services/registry';
 import { writeMetric, writeFailedRequest } from '../utils/metrics';
 import { sanitiseHeaders, redactBody } from '../utils/sanitise';
+import type { OrbitRequest } from '../types';
 import {
   createProxyMiddleware,
   fixRequestBody,
@@ -57,6 +58,7 @@ export function proxyMiddleware(
   const startedAt      = Date.now();
   const correlationId  = req.headers['x-correlation-id'] as string;
   const tenantId       = req.headers['x-tenant-id'] as string ?? service.tenantId;
+  const orbitReq       = req as OrbitRequest;
 
   // Stamp service context on request so downstream middleware can read it
   req.headers['x-service-id']   = service.id;
@@ -99,7 +101,7 @@ export function proxyMiddleware(
             tenantId,
             method: req.method,
             path: req.path,
-            sanitisedHeaders: sanitiseHeaders(
+            sanitisedHeaders: orbitReq.orbitSanitisedHeaders ?? sanitiseHeaders(
               req.headers as Record<string, string>
             ),
             redactedBody: req.body
@@ -136,7 +138,7 @@ export function proxyMiddleware(
           tenantId,
           method: req.method,
           path: req.path,
-          sanitisedHeaders: sanitiseHeaders(
+          sanitisedHeaders: orbitReq.orbitSanitisedHeaders ?? sanitiseHeaders(
             req.headers as Record<string, string>
           ),
           redactedBody: req.body

@@ -106,16 +106,32 @@ router.get('/failed-requests', async (req: Request, res: Response) => {
     const limit = Number(req.query.limit ?? 20);
     const result = await db.query(
       `SELECT
-         fr.id, fr.method, fr.path, fr.response_status,
-         fr.error_reason, fr.correlation_id, fr.timestamp,
-         s.name AS service_name, s.revenue_impact
+         fr.id,
+         fr.method,
+         fr.path,
+         fr.sanitised_headers,
+         fr.redacted_body,
+         fr.response_status,
+         fr.error_reason,
+         fr.correlation_id,
+         fr.timestamp,
+         s.name AS service_name,
+         s.revenue_impact
        FROM failed_requests fr
        JOIN services s ON s.id = fr.service_id
        ORDER BY fr.timestamp DESC
        LIMIT $1`,
       [limit]
     );
-    res.json({ success: true, data: result.rows });
+    
+    res.json({
+      success: true,
+      data: result.rows.map(row => ({
+        ...row,
+        sanitised_headers: row.sanitised_headers ?? {},
+        redacted_body: row.redacted_body ?? null,
+      })),
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed requests query failed' });
   }
